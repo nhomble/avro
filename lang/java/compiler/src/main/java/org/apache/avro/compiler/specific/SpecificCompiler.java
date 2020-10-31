@@ -33,6 +33,7 @@ import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.HashSet;
 import java.util.LinkedHashSet;
+import java.util.LinkedList;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -111,7 +112,7 @@ public class SpecificCompiler {
   private final Set<Schema> queue = new HashSet<>();
   private Protocol protocol;
   private VelocityEngine velocityEngine;
-  private String templateDir;
+  private LinkedList<String> templateDir;
   private FieldVisibility fieldVisibility = FieldVisibility.PRIVATE;
   private boolean createOptionalGetters = false;
   private boolean gettersReturnOptional = false;
@@ -168,8 +169,9 @@ public class SpecificCompiler {
    * logical types.
    */
   SpecificCompiler() {
-    this.templateDir = System.getProperty("org.apache.avro.specific.templates",
-        "/org/apache/avro/compiler/specific/templates/java/classic/");
+    this.templateDir = new LinkedList<>();
+    this.templateDir.addFirst(System.getProperty("org.apache.avro.specific.templates",
+        "/org/apache/avro/compiler/specific/templates/java/classic/"));
     initializeVelocity();
     initializeSpecificData();
   }
@@ -188,7 +190,15 @@ public class SpecificCompiler {
    * present on the classpath.
    */
   public void setTemplateDir(String templateDir) {
-    this.templateDir = templateDir;
+    this.templateDir = new LinkedList<>();
+    this.templateDir.addFirst(templateDir);
+  }
+
+  /**
+   * Add another template source directory with highest priority
+   */
+  public void addTemplateOverride(String templateDir) {
+    this.templateDir.addFirst(templateDir);
   }
 
   /** Set the resource file suffix, .java or .xxx */
@@ -507,16 +517,26 @@ public class SpecificCompiler {
     }
   }
 
+  private boolean templateExists(String templateName) {
+    return this.velocityEngine.resourceExists(templateName);
+  }
+
   private String renderTemplate(String templateName, VelocityContext context) {
     Template template;
     try {
-      template = this.velocityEngine.getTemplate(templateName);
+      for (String templateDirectory : this.templateDir) {
+        String fullTemplateName = templateDirectory + templateName;
+        if (templateExists(fullTemplateName)) {
+          template = this.velocityEngine.getTemplate(fullTemplateName);
+          StringWriter writer = new StringWriter();
+          template.merge(context, writer);
+          return writer.toString();
+        }
+      }
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
-    StringWriter writer = new StringWriter();
-    template.merge(context, writer);
-    return writer.toString();
+    throw new RuntimeException("Could not find templateName=" + templateName);
   }
 
   OutputFile compileInterface(Protocol protocol) {
@@ -528,7 +548,7 @@ public class SpecificCompiler {
       String toolName = velocityTool.getClass().getSimpleName().toLowerCase();
       context.put(toolName, velocityTool);
     }
-    String out = renderTemplate(templateDir + "protocol.vm", context);
+    String out = renderTemplate("protocol.vm", context);
 
     OutputFile outputFile = new OutputFile();
     String mangledName = mangle(protocol.getName());
@@ -587,13 +607,13 @@ public class SpecificCompiler {
     switch (schema.getType()) {
     case RECORD:
       validateRecordForCompilation(schema);
-      output = renderTemplate(templateDir + "record.vm", context);
+      output = renderTemplate("record.vm", context);
       break;
     case ENUM:
-      output = renderTemplate(templateDir + "enum.vm", context);
+      output = renderTemplate("enum.vm", context);
       break;
     case FIXED:
-      output = renderTemplate(templateDir + "fixed.vm", context);
+      output = renderTemplate("fixed.vm", context);
       break;
     case BOOLEAN:
     case NULL:

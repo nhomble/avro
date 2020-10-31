@@ -798,4 +798,40 @@ public class TestSpecificCompiler {
     assertEquals(1, itWorksFound);
   }
 
+  @Test
+  public void testTemplateOverride() throws IOException {
+    SpecificCompiler compiler = createCompiler();
+    List<Object> customTools = new ArrayList<>();
+    customTools.add(new String());
+    compiler.setAdditionalVelocityTools(customTools);
+    compiler.addTemplateOverride("src/test/resources/templates_with_custom_tools/");
+    compiler.compileToDestination(this.src, this.OUTPUT_DIR.getRoot());
+    assertTrue(this.outputFile.exists());
+    int itWorksFound = 0;
+    try (BufferedReader reader = new BufferedReader(new FileReader(this.outputFile))) {
+      String line;
+      while ((line = reader.readLine()) != null) {
+        line = line.trim();
+        if (line.contains("It works!")) {
+          itWorksFound++;
+        }
+      }
+    }
+    assertEquals(1, itWorksFound);
+  }
+
+  @Test
+  public void testTemplateOverrideCanFallback() throws IOException {
+    SpecificCompiler compiler = createCompiler();
+    compiler.compileToDestination(this.src, OUTPUT_DIR.getRoot());
+    compiler.addTemplateOverride("src/test/resources/foo");
+    assertTrue(this.outputFile.exists());
+    try (BufferedReader reader = new BufferedReader(new FileReader(this.outputFile))) {
+      String line;
+      while ((line = reader.readLine()) != null) {
+        line = line.trim();
+        assertFalse(line.contains("Optional"));
+      }
+    }
+  }
 }
